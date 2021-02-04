@@ -1,0 +1,59 @@
+#!groovy
+// Run docker build
+properties([disableConcurrentBuilds()])
+
+pipeline {
+    agent { 
+        label 'master'
+        }
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
+        timestamps()
+    }
+    stages {
+        stage("docker login") {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub_nortonts', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                    sh """
+                    docker login -u $USERNAME -p $PASSWORD 
+                    """
+                }
+            }
+        }     
+        stage("create docker image") {
+            steps {
+                echo " ============== start building image =================="
+                dir ('nginx') {
+                	sh 'docker build -t nortonts/nginx_conf:latest . '
+                }
+            }
+        }
+        stage("docker push") {
+            steps {
+                echo " ============== start pushing image =================="
+                sh '''
+                docker push nortonts/nginx_conf:latest
+                '''
+            }
+        }
+        stage("swarm") {
+            steps {
+                sh 'docker swarm init'
+                }
+            }       
+        stage("build docker-compose") {
+            steps {
+                dir ('Docker') {
+                    sh 'docker-compose build'
+                    }
+                }
+            }
+        stage("run node") {
+            steps {
+                dir ('Docker') {
+                sh 'docker stack deploy nodeapp -c docker-compose.yml'
+                    }
+                }     
+            }    
+    }
+}
